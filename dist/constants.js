@@ -6,11 +6,13 @@ exports.CHAT_MESSAGE_VERSION = 1;
 exports.MessageValues = {
     Profile: {
         BanUser: 1000000000,
+        Proxy: 1000000000,
         UpdateDefaultPermissions: 1000000000,
         UpdateMeta: 1000000000,
         UpdateRoomInfo: 1000000000,
         UpdateServerInfo: 1000000000,
         UpdateUserPermissions: 1000000000,
+        Withdraw: 500000000,
     },
     Root: {
         DeployProfile: 2000000000,

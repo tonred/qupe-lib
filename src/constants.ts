@@ -4,11 +4,13 @@ export const CHAT_MESSAGE_VERSION = 1
 export const MessageValues = {
     Profile: {
         BanUser: 1_000_000_000,
+        Proxy: 1_000_000_000,
         UpdateDefaultPermissions: 1_000_000_000,
         UpdateMeta: 1_000_000_000,
         UpdateRoomInfo: 1_000_000_000,
         UpdateServerInfo: 1_000_000_000,
         UpdateUserPermissions: 1_000_000_000,
+        Withdraw: 500_000_000,
     },
     Root: {
         DeployProfile: 2_000_000_000,

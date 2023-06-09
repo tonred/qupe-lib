@@ -2,11 +2,13 @@ export declare const CHAT_MESSAGE_VERSION = 1;
 export declare const MessageValues: {
     Profile: {
         BanUser: number;
+        Proxy: number;
         UpdateDefaultPermissions: number;
         UpdateMeta: number;
         UpdateRoomInfo: number;
         UpdateServerInfo: number;
         UpdateUserPermissions: number;
+        Withdraw: number;
     };
     Root: {
         DeployProfile: number;

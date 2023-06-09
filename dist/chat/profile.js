@@ -12,6 +12,7 @@ class ChatProfile extends profile_1.Profile {
     constructor(rpc, address, root) {
         super(rpc, abi_1.ChatAbi.Profile, address, root);
         this.jointServers = new Map();
+        this.balances = new Map();
     }
     async subscribe(onStateChanged) {
         const subscription = await this.rpc.subscribe('contractStateChanged', { address: this.address });
@@ -110,14 +111,73 @@ class ChatProfile extends profile_1.Profile {
         }
         return servers;
     }
-    async createRoom(server, meta, anyoneCanSendMessage, onCreate) {
+    async depositNative(amount, onDeposit) {
+        if (!this.owner || !this._contractWallet)
+            return;
+        const tx = await this._contractWallet.methods.deposit({})
+            .send({
+            amount,
+            bounce: true,
+            from: this.owner,
+        });
+        const subscriber = new this.rpc.Subscriber();
+        subscriber.trace(tx).on(i => {
+            if (i.account.equals(this.address)) {
+                subscriber.unsubscribe();
+                onDeposit();
+            }
+        });
+    }
+    async withdrawNativeFrom(entity, onWithdraw) {
+        if (!this.owner || !this._contractWallet)
+            return;
+        const tx = await this._contractWallet.methods.withdrawFrom({
+            entity,
+            recipient: this.owner,
+            token: utils_1.zeroAddress,
+        })
+            .send({
+            amount: constants_1.MessageValues.Profile.Proxy.toString(),
+            bounce: true,
+            from: this.owner,
+        });
+        const subscriber = new this.rpc.Subscriber();
+        subscriber.trace(tx).on(i => {
+            if (i.account.equals(entity)) {
+                subscriber.unsubscribe();
+                onWithdraw();
+            }
+        });
+    }
+    async withdrawNative(amount, onWithdraw) {
+        if (!this.owner || !this._contractWallet)
+            return;
+        const tx = await this._contractWallet.methods.withdraw({
+            amount,
+            recipient: this.owner,
+            token: utils_1.zeroAddress,
+        })
+            .send({
+            amount: constants_1.MessageValues.Profile.Withdraw.toString(),
+            bounce: true,
+            from: this.owner,
+        });
+        const subscriber = new this.rpc.Subscriber();
+        subscriber.trace(tx).on(i => {
+            if (i.account.equals(this.address)) {
+                subscriber.unsubscribe();
+                onWithdraw();
+            }
+        });
+    }
+    async createRoom(server, meta, anyoneCanSendMessage, onCreate, messagePayment) {
         if (!this.owner || !this._contractWallet)
             return;
         const tx = await this._contractWallet.methods.createRoom({
             anyCanSendMessage: anyoneCanSendMessage,
             info: {
                 highlightMessagePayment: constants_2.EMPTY_PAYMENT,
-                messagePayment: constants_2.EMPTY_PAYMENT,
+                messagePayment: messagePayment || constants_2.EMPTY_PAYMENT,
                 meta: (0, utils_1.contentEncoder)(await schema_1.chatRoomMetaSchema.validate(meta)),
             },
             owner: this.owner,
@@ -238,14 +298,23 @@ class ChatProfile extends profile_1.Profile {
     }
     async editRoomMeta(meta, room, onSaved) {
         const roomInfo = room.info();
-        if (!this._contractWallet || !this.owner || !roomInfo)
+        if (!roomInfo)
+            return;
+        const newInfo = {
+            highlightMessagePayment: roomInfo.highlightMessagePayment,
+            messagePayment: roomInfo.messagePayment,
+            meta,
+        };
+        await this.editRoomInfo(newInfo, room, onSaved);
+    }
+    async editRoomInfo(info, room, onSaved) {
+        if (!this._contractWallet || !this.owner)
             return;
         const tx = await this._contractWallet.methods
             .changeRoomInfo({
             info: {
-                highlightMessagePayment: roomInfo.highlightMessagePayment,
-                messagePayment: roomInfo.messagePayment,
-                meta: (0, utils_1.contentEncoder)(await schema_1.chatServerMetaSchema.validate(meta)),
+                ...info,
+                meta: (0, utils_1.contentEncoder)(await schema_1.chatServerMetaSchema.validate(info.meta)),
             },
             roomID: room.baseData.roomId,
             serverID: room.baseData.serverId,
@@ -295,6 +364,10 @@ class ChatProfile extends profile_1.Profile {
         if (!fields)
             return;
         this.owner = fields._owner;
+        fields._balances.forEach(value => {
+            this.balances.set(value[0].toString(), value[1]);
+        });
+        this.balances.set(utils_1.zeroAddress.toString(), this.balance);
         fields._servers.forEach(value => {
             this.jointServers.set(Number(value[0]), value[1]);
         });

@@ -4,7 +4,7 @@ import { Profile } from '../abstract/profile'
 import { type ChatServer } from './server'
 import { ChatAbi } from '../abi'
 import { type ChatRoot } from './root'
-import { contentDecoder, contentEncoder } from '../utils'
+import { contentDecoder, contentEncoder, zeroAddress } from '../utils'
 import { type ChatRoom } from './room'
 import { CHAT_MESSAGE_VERSION, MessageValues } from '../constants'
 import { EMPTY_PAYMENT } from '../abstract/constants'
@@ -18,11 +18,14 @@ import {
     chatServerMetaSchema,
 } from './schema'
 import { UserPermissions } from '../permissions'
+import { type ChatRoomData } from './types'
 
 
 export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Profile> {
 
     jointServers = new Map<number, boolean>()
+
+    balances = new Map<string, string>()
 
     meta?: ChatProfileMeta
 
@@ -144,18 +147,78 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
         return servers
     }
 
+    async depositNative(amount: string, onDeposit: () => void): Promise<void> {
+        if (!this.owner || !this._contractWallet) return
+        const tx = await this._contractWallet.methods.deposit({})
+            .send({
+                amount,
+                bounce: true,
+                from: this.owner,
+            })
+        const subscriber = new this.rpc.Subscriber()
+        subscriber.trace(tx).on(i => {
+            if (i.account.equals(this.address)) {
+                subscriber.unsubscribe()
+                onDeposit()
+            }
+        })
+    }
+
+    async withdrawNativeFrom(entity: Address, onWithdraw: () => void): Promise<void> {
+        if (!this.owner || !this._contractWallet) return
+        const tx = await this._contractWallet.methods.withdrawFrom({
+            entity,
+            recipient: this.owner,
+            token: zeroAddress,
+        })
+            .send({
+                amount: MessageValues.Profile.Proxy.toString(),
+                bounce: true,
+                from: this.owner,
+            })
+        const subscriber = new this.rpc.Subscriber()
+        subscriber.trace(tx).on(i => {
+            if (i.account.equals(entity)) {
+                subscriber.unsubscribe()
+                onWithdraw()
+            }
+        })
+    }
+
+    async withdrawNative(amount: string, onWithdraw: () => void): Promise<void> {
+        if (!this.owner || !this._contractWallet) return
+        const tx = await this._contractWallet.methods.withdraw({
+            amount,
+            recipient: this.owner,
+            token: zeroAddress,
+        })
+            .send({
+                amount: MessageValues.Profile.Withdraw.toString(),
+                bounce: true,
+                from: this.owner,
+            })
+        const subscriber = new this.rpc.Subscriber()
+        subscriber.trace(tx).on(i => {
+            if (i.account.equals(this.address)) {
+                subscriber.unsubscribe()
+                onWithdraw()
+            }
+        })
+    }
+
     async createRoom(
         server: ChatServer,
         meta: ChatRoomMeta,
         anyoneCanSendMessage: boolean,
         onCreate: (r?: ChatRoom) => void,
+        messagePayment?: PaymentInfo,
     ): Promise<void> {
         if (!this.owner || !this._contractWallet) return
         const tx = await this._contractWallet.methods.createRoom({
             anyCanSendMessage: anyoneCanSendMessage,
             info: {
                 highlightMessagePayment: EMPTY_PAYMENT,
-                messagePayment: EMPTY_PAYMENT,
+                messagePayment: messagePayment || EMPTY_PAYMENT,
                 meta: contentEncoder(await chatRoomMetaSchema.validate(meta)),
             },
             owner: this.owner,
@@ -288,13 +351,22 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
 
     async editRoomMeta(meta: ChatRoomMeta, room: ChatRoom, onSaved: () => void): Promise<any> {
         const roomInfo = room.info()
-        if (!this._contractWallet || !this.owner || !roomInfo) return
+        if (!roomInfo) return
+        const newInfo = {
+            highlightMessagePayment: roomInfo.highlightMessagePayment,
+            messagePayment: roomInfo.messagePayment,
+            meta,
+        }
+        await this.editRoomInfo(newInfo, room, onSaved)
+    }
+
+    async editRoomInfo(info: ChatRoomData, room: ChatRoom, onSaved: () => void): Promise<any> {
+        if (!this._contractWallet || !this.owner) return
         const tx = await this._contractWallet.methods
             .changeRoomInfo({
                 info: {
-                    highlightMessagePayment: roomInfo.highlightMessagePayment,
-                    messagePayment: roomInfo.messagePayment,
-                    meta: contentEncoder(await chatServerMetaSchema.validate(meta)),
+                    ...info,
+                    meta: contentEncoder(await chatServerMetaSchema.validate(info.meta)),
                 },
                 roomID: room.baseData!.roomId,
                 serverID: room.baseData!.serverId,
@@ -344,6 +416,10 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
         const { fields } = await this.contract.getFields({ cachedState: state })
         if (!fields) return
         this.owner = fields._owner
+        fields._balances.forEach(value => {
+            this.balances.set(value[0].toString(), value[1])
+        })
+        this.balances.set(zeroAddress.toString(), this.balance)
         fields._servers.forEach(value => {
             this.jointServers.set(Number(value[0]), value[1])
         })
