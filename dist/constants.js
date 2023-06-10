@@ -8,19 +8,19 @@ exports.MessageValues = {
         BanUser: 1000000000,
         Proxy: 1000000000,
         UpdateDefaultPermissions: 1000000000,
-        UpdateMeta: 1000000000,
+        UpdateMeta: 500000000,
         UpdateRoomInfo: 1000000000,
         UpdateServerInfo: 1000000000,
         UpdateUserPermissions: 1000000000,
         Withdraw: 500000000,
     },
     Root: {
-        DeployProfile: 2000000000,
-        DeployServer: 3000000000,
+        DeployProfile: 1000000000,
+        DeployServer: 2000000000,
     },
     Server: {
         CreateRoom: 2000000000,
-        Join: 1200000000,
+        Join: 500000000,
     },
 };
 exports.EMPTY_PAYMENT = {
