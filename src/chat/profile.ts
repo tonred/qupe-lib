@@ -59,18 +59,19 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
             from: this.owner,
         })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
+        await subscriber.trace(tx).filter(async i => {
             if (i.account.equals(this.address)) {
-                this.contract.decodeTransactionEvents({ transaction: i }).then(events => {
-                    events.forEach(e => {
-                        if (e.event === 'Joined') {
-                            subscriber.unsubscribe()
-                            onJoin()
-                        }
-                    })
-                })
+                const decoded = await this.contract.decodeTransactionEvents({ transaction: i })
+                for (const event of decoded) {
+                    if (event.event === 'Joined') {
+                        onJoin()
+                    }
+                }
             }
-        })
+            return false
+        }).first()
+        await subscriber.unsubscribe()
+
     }
 
     async sendMessage(
@@ -120,18 +121,19 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
         if (onSend !== undefined) {
             delayedMessageExecution.transaction.then(tx => {
                 const subscriber = new this.rpc.Subscriber()
-                subscriber.trace(tx).on(i => {
-                    if (i.account.equals(room.address)) {
-                        room.contract.decodeTransactionEvents({ transaction: i }).then(events => {
+                subscriber.trace(tx).filter(i => i.account.equals(room.address)).first().then(roomTx => {
+                    if (roomTx) {
+                        room.contract.decodeTransactionEvents({ transaction: roomTx }).then(events => {
                             events.forEach(e => {
                                 if (e.event === 'MessageAccepted') {
-                                    subscriber.unsubscribe()
                                     onSend()
                                 }
                             })
                         })
                     }
+                    subscriber.unsubscribe()
                 })
+
             })
         }
 
@@ -156,12 +158,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(this.address)) {
-                subscriber.unsubscribe()
-                onDeposit()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(this.address)).first()
+        await subscriber.unsubscribe()
+        onDeposit()
     }
 
     async withdrawNativeFrom(entity: Address, onWithdraw: () => void): Promise<void> {
@@ -177,12 +176,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(entity)) {
-                subscriber.unsubscribe()
-                onWithdraw()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(entity)).first()
+        await subscriber.unsubscribe()
+        onWithdraw()
     }
 
     async withdrawNative(amount: string, onWithdraw: () => void): Promise<void> {
@@ -198,12 +194,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(this.address)) {
-                subscriber.unsubscribe()
-                onWithdraw()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(this.address)).first()
+        await subscriber.unsubscribe()
+        onWithdraw()
     }
 
     async createRoom(
@@ -230,20 +223,19 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
             from: this.owner,
         })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(server.address)) {
-                server.contract.decodeTransactionEvents({ transaction: i }).then(events => {
-                    events.forEach(e => {
-                        if (e.event === 'RoomCreated') {
-                            server.getRoomById(Number(e.data.roomID)).then(room => {
-                                onCreate(room)
-                            })
-                            subscriber.unsubscribe()
-                        }
-                    })
+        const serverTx = await subscriber.trace(tx).filter(i => i.account.equals(server.address)).first()
+        if (serverTx) {
+            server.contract.decodeTransactionEvents({ transaction: serverTx }).then(events => {
+                events.forEach(e => {
+                    if (e.event === 'RoomCreated') {
+                        server.getRoomById(Number(e.data.roomID)).then(room => {
+                            onCreate(room)
+                        })
+                    }
                 })
-            }
-        })
+            })
+        }
+        await subscriber.unsubscribe()
     }
 
     async setBan(
@@ -268,12 +260,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
             })
         const profileAddress = await this.root.expectedProfileAddress(user)
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(profileAddress)) {
-                subscriber.unsubscribe()
-                onSaved()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(profileAddress)).first()
+        await subscriber.unsubscribe()
+        onSaved()
     }
 
     async setUserPermissions(
@@ -295,12 +284,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(entity)) {
-                subscriber.unsubscribe()
-                onSaved()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(entity)).first()
+        await subscriber.unsubscribe()
+        onSaved()
     }
 
     async setDefaultPermissions(permissions: UserPermissions, entity: Address, onSaved: () => void): Promise<any> {
@@ -316,12 +302,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(entity)) {
-                subscriber.unsubscribe()
-                onSaved()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(entity)).first()
+        await subscriber.unsubscribe()
+        onSaved()
     }
 
     async editServerMeta(meta: ChatServerMeta, server: ChatServer, onSaved: () => void): Promise<any> {
@@ -341,12 +324,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(server.address)) {
-                subscriber.unsubscribe()
-                onSaved()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(server.address)).first()
+        await subscriber.unsubscribe()
+        onSaved()
     }
 
     async editRoomMeta(meta: ChatRoomMeta, room: ChatRoom, onSaved: () => void): Promise<any> {
@@ -377,12 +357,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(room.address)) {
-                subscriber.unsubscribe()
-                onSaved()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(room.address)).first()
+        await subscriber.unsubscribe()
+        onSaved()
     }
 
     async editMeta(meta: ChatProfileMeta, onSaved: () => void): Promise<any> {
@@ -395,12 +372,9 @@ export class ChatProfile extends Profile<ChatRoot, ChatServer, typeof ChatAbi.Pr
                 from: this.owner,
             })
         const subscriber = new this.rpc.Subscriber()
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(this.address)) {
-                subscriber.unsubscribe()
-                onSaved()
-            }
-        })
+        await subscriber.trace(tx).filter(i => i.account.equals(this.address)).first()
+        await subscriber.unsubscribe()
+        onSaved()
     }
 
     async update(): Promise<any> {

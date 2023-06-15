@@ -37,18 +37,18 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         }));
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
+        await subscriber.trace(tx).filter(async (i) => {
             if (i.account.equals(this.address)) {
-                this.contract.decodeTransactionEvents({ transaction: i }).then(events => {
-                    events.forEach(e => {
-                        if (e.event === 'Joined') {
-                            subscriber.unsubscribe();
-                            onJoin();
-                        }
-                    });
-                });
+                const decoded = await this.contract.decodeTransactionEvents({ transaction: i });
+                for (const event of decoded) {
+                    if (event.event === 'Joined') {
+                        onJoin();
+                    }
+                }
             }
-        });
+            return false;
+        }).first();
+        await subscriber.unsubscribe();
     }
     async sendMessage(rpc, room, message, publicKey, forwardMessageHash, replyToMessageHash, onSend, highlight = false, payment = constants_2.EMPTY_PAYMENT) {
         if (!room.baseData) {
@@ -87,17 +87,17 @@ class ChatProfile extends profile_1.Profile {
         if (onSend !== undefined) {
             delayedMessageExecution.transaction.then(tx => {
                 const subscriber = new this.rpc.Subscriber();
-                subscriber.trace(tx).on(i => {
-                    if (i.account.equals(room.address)) {
-                        room.contract.decodeTransactionEvents({ transaction: i }).then(events => {
+                subscriber.trace(tx).filter(i => i.account.equals(room.address)).first().then(roomTx => {
+                    if (roomTx) {
+                        room.contract.decodeTransactionEvents({ transaction: roomTx }).then(events => {
                             events.forEach(e => {
                                 if (e.event === 'MessageAccepted') {
-                                    subscriber.unsubscribe();
                                     onSend();
                                 }
                             });
                         });
                     }
+                    subscriber.unsubscribe();
                 });
             });
         }
@@ -121,12 +121,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(this.address)) {
-                subscriber.unsubscribe();
-                onDeposit();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(this.address)).first();
+        await subscriber.unsubscribe();
+        onDeposit();
     }
     async withdrawNativeFrom(entity, onWithdraw) {
         if (!this.owner || !this._contractWallet)
@@ -142,12 +139,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(entity)) {
-                subscriber.unsubscribe();
-                onWithdraw();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(entity)).first();
+        await subscriber.unsubscribe();
+        onWithdraw();
     }
     async withdrawNative(amount, onWithdraw) {
         if (!this.owner || !this._contractWallet)
@@ -163,12 +157,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(this.address)) {
-                subscriber.unsubscribe();
-                onWithdraw();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(this.address)).first();
+        await subscriber.unsubscribe();
+        onWithdraw();
     }
     async createRoom(server, meta, anyoneCanSendMessage, onCreate, messagePayment) {
         if (!this.owner || !this._contractWallet)
@@ -189,20 +180,19 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(server.address)) {
-                server.contract.decodeTransactionEvents({ transaction: i }).then(events => {
-                    events.forEach(e => {
-                        if (e.event === 'RoomCreated') {
-                            server.getRoomById(Number(e.data.roomID)).then(room => {
-                                onCreate(room);
-                            });
-                            subscriber.unsubscribe();
-                        }
-                    });
+        const serverTx = await subscriber.trace(tx).filter(i => i.account.equals(server.address)).first();
+        if (serverTx) {
+            server.contract.decodeTransactionEvents({ transaction: serverTx }).then(events => {
+                events.forEach(e => {
+                    if (e.event === 'RoomCreated') {
+                        server.getRoomById(Number(e.data.roomID)).then(room => {
+                            onCreate(room);
+                        });
+                    }
                 });
-            }
-        });
+            });
+        }
+        await subscriber.unsubscribe();
     }
     async setBan(serverID, roomID, user, isBan, onSaved) {
         if (!this._contractWallet || !this.owner)
@@ -221,12 +211,9 @@ class ChatProfile extends profile_1.Profile {
         });
         const profileAddress = await this.root.expectedProfileAddress(user);
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(profileAddress)) {
-                subscriber.unsubscribe();
-                onSaved();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(profileAddress)).first();
+        await subscriber.unsubscribe();
+        onSaved();
     }
     async setUserPermissions(permissions, entity, user, onSaved) {
         if (!this._contractWallet || !this.owner)
@@ -243,12 +230,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(entity)) {
-                subscriber.unsubscribe();
-                onSaved();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(entity)).first();
+        await subscriber.unsubscribe();
+        onSaved();
     }
     async setDefaultPermissions(permissions, entity, onSaved) {
         if (!this._contractWallet || !this.owner)
@@ -264,12 +248,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(entity)) {
-                subscriber.unsubscribe();
-                onSaved();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(entity)).first();
+        await subscriber.unsubscribe();
+        onSaved();
     }
     async editServerMeta(meta, server, onSaved) {
         const serverInfo = server.info();
@@ -289,12 +270,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(server.address)) {
-                subscriber.unsubscribe();
-                onSaved();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(server.address)).first();
+        await subscriber.unsubscribe();
+        onSaved();
     }
     async editRoomMeta(meta, room, onSaved) {
         const roomInfo = room.info();
@@ -325,12 +303,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(room.address)) {
-                subscriber.unsubscribe();
-                onSaved();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(room.address)).first();
+        await subscriber.unsubscribe();
+        onSaved();
     }
     async editMeta(meta, onSaved) {
         if (!this._contractWallet || !this.owner)
@@ -343,12 +318,9 @@ class ChatProfile extends profile_1.Profile {
             from: this.owner,
         });
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(this.address)) {
-                subscriber.unsubscribe();
-                onSaved();
-            }
-        });
+        await subscriber.trace(tx).filter(i => i.account.equals(this.address)).first();
+        await subscriber.unsubscribe();
+        onSaved();
     }
     async update() {
         await this.getState(true);

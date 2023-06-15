@@ -31,21 +31,20 @@ class ChatRoot extends root_1.Root {
         });
         const ownerProfile = new this.rpc.Contract(abi_1.ChatAbi.Profile, await this.expectedProfileAddress(owner));
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(ownerProfile.address)) {
-                ownerProfile.decodeTransactionEvents({ transaction: i })
-                    .then(events => {
-                    events.forEach(e => {
-                        if (e.event === 'Joined') {
-                            this.getServer(Number(e.data.serverID)).then(s => {
-                                onCreate(s);
-                            });
-                            subscriber.unsubscribe();
-                        }
-                    });
+        const accountTx = await subscriber.trace(tx).filter(i => i.account.equals(ownerProfile.address)).first();
+        if (accountTx) {
+            ownerProfile.decodeTransactionEvents({ transaction: accountTx })
+                .then(events => {
+                events.forEach(e => {
+                    if (e.event === 'Joined') {
+                        this.getServer(Number(e.data.serverID)).then(s => {
+                            onCreate(s);
+                        });
+                    }
                 });
-            }
-        });
+            });
+        }
+        await subscriber.unsubscribe();
         // const callbacks = new this.rpc.Contract(ChatAbi.Callbacks, this.address)
         //
         // for (const msg of tx.outMessages) {
@@ -92,12 +91,9 @@ class ChatRoot extends root_1.Root {
         });
         const expectedProfileAddress = await this.expectedProfileAddress(from);
         const subscriber = new this.rpc.Subscriber();
-        subscriber.trace(tx).on(i => {
-            if (i.account.equals(expectedProfileAddress)) {
-                subscriber.unsubscribe();
-                this.getProfileFromAddress(expectedProfileAddress).then(onDeploy);
-            }
-        });
+        await subscriber.trace(tx).filter(transaction => transaction.account.equals(expectedProfileAddress)).first();
+        await subscriber.unsubscribe();
+        onDeploy(await this.getProfileFromAddress(expectedProfileAddress));
     }
     get impl() {
         return { Profile: profile_1.ChatProfile, Room: room_1.ChatRoom, Server: server_1.ChatServer };
